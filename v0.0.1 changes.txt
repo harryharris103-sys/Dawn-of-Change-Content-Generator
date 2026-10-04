@@ -1,0 +1,25 @@
+1. Animations — a new "Animation" menu replaces the fixed effect, with six options:
+
+Word reveal (the original effect)
+Typewriter (character-by-character)
+Fade in
+Slide up
+Zoom in
+None (static from frame one)
+
+All six render correctly in my tests. Citation and logo fade in after the verse text for Word reveal/Typewriter; for Fade/Slide/Zoom the whole graphic — verse, citation, and logo — animates in together over the first third of the clip, then holds for the rest.
+
+2. Audio — a new "Audio clip" section lets you add any audio file. Once added you get:
+
+Volume slider
+Audio start slider — picks where in the clip playback begins
+The clip automatically loops (from that start point) or gets trimmed to exactly match your video length, so it always fits
+
+This only affects MP4/video export; PNG/JPG are unaffected.
+
+A couple of things worth knowing:
+
+Audio clips aren't saved in history or share links (same as uploaded backgrounds) — you'd re-add the clip after reloading.
+Browser codec support varies: Chrome/Edge/Safari generally give you a true MP4 with H.264/AAC; other browsers fall back to WebM with Opus audio. Either way the file plays fine, just with a different container.
+
+The attached index.html is the updated file for your GitHub repo.
