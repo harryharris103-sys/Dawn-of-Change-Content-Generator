@@ -1,0 +1,15 @@
+Auto-detecting your repo's content: on load, the app now calls the GitHub API to list what's actually in your assets/ and data/ folders:
+
+Any .png/.webp file in assets/ becomes a logo option automatically — logo-gold.png still maps to "Gold" as before, but something like logo-sepia.png now shows up as "Sepia" with zero code changes needed.
+Any .json file in data/ (other than niv.json) is loaded as an extra Bible version automatically, labeled from a name/version/abbreviation field inside the file if it has one, otherwise from the filename.
+It auto-detects your GitHub username and repo name from the Pages URL itself (<owner>.github.io/<repo>), so no setup is needed on your end. If your setup doesn't follow that pattern, there are GH_OWNER/GH_REPO constants near the top of the script to set manually.
+If the API call fails for any reason (offline, rate-limited, repo not public), it just falls back to the built-in NIV and the three original logos — nothing breaks.
+
+Reading different .json schemas: both the auto-loaded repo files and manual imports now go through a more flexible parser. Previously it expected one shape; now it also understands:
+
+A flat list of verse records with varying key names/casing (book/Book/book_name, verse/Verse/v, etc.)
+A {"verses": [...]} wrapper
+A book → array-of-chapters → array-of-verse-strings layout (the shape some Bible APIs use)
+Everything it already supported before (nested book/chapter/verse objects, plain text lines)
+
+When you manually import a file, the label prompt now pre-fills with a name it found inside the file, instead of just guessing from the filename.

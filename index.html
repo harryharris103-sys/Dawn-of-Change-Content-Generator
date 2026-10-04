@@ -48,6 +48,14 @@ select,input[type=number]{font-size:16px;min-height:44px}button{min-height:44px}
 <input id="bgf" type="file" accept="image/*" hidden>
 <label>Darken image (<span id="dv"></span>%)</label><input id="dim" type="range" min="0" max="85" style="width:100%">
 <label>Video length (seconds, max 30)</label><input id="dur" type="number" min="3" max="30">
+<label>Animation</label><select id="anim"></select>
+<label>Audio clip</label><div class="row2" style="grid-template-columns:1fr auto"><span id="asum" style="align-self:center;color:var(--dim);font-size:12px">No audio clip</span><button class="g" onclick="$('af').click()">Add…</button></div>
+<input id="af" type="file" accept="audio/*" hidden>
+<div id="aud_ctrls" style="display:none">
+<label>Volume (<span id="vv"></span>%)</label><input id="vol" type="range" min="0" max="100" style="width:100%">
+<label>Audio start (<span id="tv"></span>s)</label><input id="trim" type="range" min="0" max="0" step="0.1" style="width:100%">
+<div class="btns"><button class="g" onclick="removeAudio()">Remove audio</button></div>
+</div>
 <div class="btns"><button onclick="expImg('png')">PNG</button><button onclick="expImg('jpeg')">JPG</button><button onclick="expVideo()">MP4</button><button class="g" onclick="share()">Copy share link</button></div>
 <div id="msg"></div>
 <h3>HISTORY</h3><div id="hist"></div><div class="btns"><button class="g" onclick="localStorage.removeItem('doc_hist');hist()">Clear history</button></div>
@@ -60,8 +68,9 @@ const $=id=>document.getElementById(id);
 const SIZES={'Instagram / Facebook Feed 1080×1080':[1080,1080],'Story · Reel · TikTok · YT Short 1080×1920':[1080,1920],'X / Twitter 1200×675':[1200,675],'YouTube 1920×1080':[1920,1080],'Facebook Landscape 1200×630':[1200,630]};
 const POS=['bottom-center','top-center','bottom-left','bottom-right','top-left','top-right'];
 const FONTS=['Anton','Caveat','Bebas Neue','Oswald','Playfair Display','Inter'];
-const DEF={ver:'NIV',bgm:'gradient',dim:40,book:'Galatians',ch:'2',v1:'20',v2:'20',size:Object.keys(SIZES)[0],fv:'Anton',fr:'Caveat',logo:'gold',pos:'bottom-center',c1:'#000000',c2:'#2b2408',tc:'#EACA43',rc:'#FFFFFF',dur:12};
-const IDS=Object.keys(DEF),cv=$('cv'),cx=cv.getContext('2d'),imgs={};let bible,cfg={...DEF};const VERS={};let BG=null;
+const ANIMS={reveal:'Word reveal',type:'Typewriter',fade:'Fade in',slide:'Slide up',zoom:'Zoom in',none:'None (static)'};
+const DEF={ver:'NIV',bgm:'gradient',dim:40,anim:'reveal',vol:70,book:'Galatians',ch:'2',v1:'20',v2:'20',size:Object.keys(SIZES)[0],fv:'Anton',fr:'Caveat',logo:'gold',pos:'bottom-center',c1:'#000000',c2:'#2b2408',tc:'#EACA43',rc:'#FFFFFF',dur:12};
+const IDS=Object.keys(DEF),cv=$('cv'),cx=cv.getContext('2d'),imgs={};let bible,cfg={...DEF};const VERS={};let BG=null,AUD=null,AUD_TRIM=0,ACTX=null;
 const opts=(el,a)=>el.innerHTML=a.map(x=>`<option>${x}</option>`).join('');
 const msg=t=>{$('msg').textContent=t;setTimeout(()=>$('msg').textContent='',4000)};
 const text=()=>{const c=bible[cfg.book][cfg.ch];let o=[];for(let i=+cfg.v1;i<=+cfg.v2;i++)if(c[i])o.push(c[i]);return o.join(' ')};
@@ -73,16 +82,38 @@ function draw(c,W,H,p=1){
  if(img){const k=Math.max(W/BG.width,H/BG.height),w=BG.width*k,h=BG.height*k;c.drawImage(BG,(W-w)/2,(H-h)/2,w,h);c.fillStyle=`rgba(0,0,0,${+cfg.dim/100})`;c.fillRect(0,0,W,H)}
  const ws=text().split(/\s+/),mw=W*.78,mh=H*.46;let fs=Math.min(W,H)*.075,L;
  for(;;){c.font=`${fs}px "${cfg.fv}"`;L=wrap(c,ws,mw);if(L.length*fs*1.3<=mh||fs<14)break;fs*=.94}
- const lh=fs*1.3,show=Math.ceil(ws.length*Math.min(1,p/.8));let y=H*.5-L.length*lh/2-fs*.5,n=0,sp=c.measureText(' ').width;
+ const lh=fs*1.3;let y0=H*.5-L.length*lh/2-fs*.5,sp=c.measureText(' ').width;
+ const anim=cfg.anim||'reveal',ease=t=>t<0?0:t>1?1:t*t*(3-2*t);
+ let showWords=ws.length,showChars=Infinity,refA=1,blockA=1,blockDY=0,blockSC=1;
+ if(anim=='reveal'){showWords=Math.ceil(ws.length*Math.min(1,p/.72));refA=ease((p-.72)/.14)}
+ else if(anim=='type'){showChars=Math.floor(ws.join(' ').length*Math.min(1,p/.72));refA=ease((p-.72)/.14)}
+ else if(anim=='fade'){blockA=ease(p/.3)}
+ else if(anim=='slide'){blockA=ease(p/.3);blockDY=(1-ease(p/.3))*(H*.06)}
+ else if(anim=='zoom'){blockA=ease(p/.3);blockSC=.85+.15*ease(p/.3)}
+ c.save();
+ if(anim=='fade'||anim=='slide'||anim=='zoom'){c.globalAlpha=blockA;if(blockSC!=1||blockDY){c.translate(W/2,H/2);c.scale(blockSC,blockSC);c.translate(-W/2,-H/2+blockDY)}}
  c.textBaseline='top';c.textAlign='left';c.fillStyle=cfg.tc;if(img){c.shadowColor='rgba(0,0,0,.65)';c.shadowBlur=fs*.12}
- for(const ln of L){const w=ln.map(t=>c.measureText(t).width),tw=w.reduce((a,b)=>a+b,0)+sp*(ln.length-1);let x=(W-tw)/2;ln.forEach((t,i)=>{if(n++<show)c.fillText(t,x,y);x+=w[i]+sp});y+=lh}
- c.globalAlpha=Math.max(0,Math.min(1,(p-.8)/.1));
+ let y=y0,wn=0,cn=0;
+ for(const ln of L){
+  const wArr=ln.map(t=>c.measureText(t).width),tw=wArr.reduce((a,b)=>a+b,0)+sp*(ln.length-1);let x=(W-tw)/2;
+  ln.forEach((t,i)=>{
+   if(anim=='type'){
+    if(cn+t.length<=showChars)c.fillText(t,x,y);
+    else if(cn<showChars)c.fillText(t.slice(0,showChars-cn),x,y);
+    cn+=t.length+1;
+   }else{if(wn<showWords)c.fillText(t,x,y);wn++}
+   x+=wArr[i]+sp;
+  });
+  y+=lh;
+ }
+ if(anim=='reveal'||anim=='type')c.globalAlpha=refA;
  c.font=`${fs*.8}px "${cfg.fr}"`;c.fillStyle=cfg.rc;c.textAlign='center';c.fillText(ref(),W/2,y+fs*.3);c.shadowBlur=0;
  const im=imgs[cfg.logo],iw=im.width,ih=im.height,sw=iw*.88,sh=ih*.45,lw=Math.min(W,H)*.24,lgh=lw*sh/sw,m=Math.min(W,H)*.05;
  const [v,h]=cfg.pos.split('-'),lx=h=='left'?m:h=='right'?W-m-lw:(W-lw)/2,ly=v=='top'?m:H-m-lgh;
- if(im.naturalWidth)c.drawImage(im,iw*.065,ih*.28,sw,sh,lx,ly,lw,lgh);c.globalAlpha=1;c.textAlign='left';
+ if(im.naturalWidth)c.drawImage(im,iw*.065,ih*.28,sw,sh,lx,ly,lw,lgh);
+ c.restore();c.globalAlpha=1;c.textAlign='left';
 }
-async function render(){$('dv').textContent=cfg.dim;const[W,H]=SIZES[cfg.size];cv.width=W;cv.height=H;await Promise.all([cfg.fv,cfg.fr].map(f=>document.fonts.load(`40px "${f}"`)));draw(cx,W,H)}
+async function render(){$('dv').textContent=cfg.dim;$('vv').textContent=cfg.vol;const[W,H]=SIZES[cfg.size];cv.width=W;cv.height=H;await Promise.all([cfg.fv,cfg.fr].map(f=>document.fonts.load(`40px "${f}"`)));draw(cx,W,H)}
 function fill(){opts($('ch'),Object.keys(bible[cfg.book]));if(!bible[cfg.book][cfg.ch])cfg.ch='1';$('ch').value=cfg.ch;
  const vs=Object.keys(bible[cfg.book][cfg.ch]);opts($('v1'),vs);opts($('v2'),vs);if(!vs.includes(cfg.v1))cfg.v1='1';if(!vs.includes(cfg.v2)||+cfg.v2<+cfg.v1)cfg.v2=cfg.v1;$('v1').value=cfg.v1;$('v2').value=cfg.v2}
 function sync(){IDS.forEach(k=>{const e=$(k);if(e&&k!='ch'&&k!='v1'&&k!='v2')e.value=cfg[k]})}
@@ -99,6 +130,15 @@ function parseBible(t){let d=null;try{d=JSON.parse(t)}catch(e){}const o={};
 const idb=()=>new Promise((r,j)=>{const q=indexedDB.open('doc',1);q.onupgradeneeded=()=>q.result.createObjectStore('v');q.onsuccess=()=>r(q.result);q.onerror=j});
 const idbSet=async(k,v)=>{const d=await idb();d.transaction('v','readwrite').objectStore('v').put(v,k)};
 const idbAll=async()=>{const d=await idb();return new Promise(r=>{const o={},q=d.transaction('v').objectStore('v').openCursor();q.onsuccess=e=>{const c=e.target.result;c?(o[c.key]=c.value,c.continue()):r(o)};q.onerror=()=>r(o)})};
+function removeAudio(){AUD=null;AUD_TRIM=0;$('aud_ctrls').style.display='none';$('asum').textContent='No audio clip';$('af').value=''}
+$('af').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;
+ try{ACTX=ACTX||new (window.AudioContext||window.webkitAudioContext)();const buf=await ACTX.decodeAudioData(await f.arrayBuffer());
+  AUD=buf;AUD_TRIM=0;$('asum').textContent=`${f.name} (${buf.duration.toFixed(1)}s)`;
+  $('trim').max=Math.max(0,buf.duration-0.1).toFixed(1);$('trim').value=0;$('tv').textContent='0';$('aud_ctrls').style.display='block';
+  msg('Audio added — it loops or trims to fit the video length. Not saved in history or share links.');
+ }catch(err){msg('Could not read that audio file.')}};
+$('trim').addEventListener('input',()=>{AUD_TRIM=+$('trim').value;$('tv').textContent=AUD_TRIM});
+$('vol').addEventListener('input',()=>{$('vv').textContent=$('vol').value});
 $('bgf').onchange=e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const i=new Image();
  i.onload=()=>{BG=i;cfg.bgm='image';$('bgm').value='image';render();msg('Background applied. Uploaded backgrounds are not saved in history or share links.')};
  i.onerror=()=>{$('bgm').value=cfg.bgm='gradient';msg('Could not read that image.')};i.src=URL.createObjectURL(f)};
@@ -110,12 +150,21 @@ $('bf').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)ret
 const fname=e=>`DoC_${cfg.book.replace(/ /g,'')}_${cfg.ch}-${cfg.v1}.${e}`;
 function expImg(t){save();cv.toBlob(b=>out(b,fname(t=='png'?'png':'jpg')),'image/'+t,.95)}
 async function expVideo(){
- const type=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t));
+ const hasAud=!!AUD;
+ const cands=hasAud?['video/mp4;codecs=avc1,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']:['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'];
+ const type=cands.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t));
  if(!type)return msg('Video export needs Chrome, Edge or Safari.');save();msg('Recording…');
- const r=new MediaRecorder(cv.captureStream(30),{mimeType:type,videoBitsPerSecond:6e6}),ch=[];r.ondataavailable=e=>ch.push(e.data);const d=new Promise(x=>r.onstop=x);r.start();
+ const stream=cv.captureStream(30);let actx,src;
+ if(hasAud){actx=new (window.AudioContext||window.webkitAudioContext)();src=actx.createBufferSource();src.buffer=AUD;src.loop=true;
+  const t0s=Math.min(AUD_TRIM,Math.max(0,AUD.duration-0.05));src.loopStart=t0s;src.loopEnd=AUD.duration;
+  const gain=actx.createGain();gain.gain.value=(+cfg.vol||70)/100;const dest=actx.createMediaStreamDestination();
+  src.connect(gain).connect(dest);stream.addTrack(dest.stream.getAudioTracks()[0]);src.start(0,t0s)}
+ const r=new MediaRecorder(stream,{mimeType:type,videoBitsPerSecond:6e6}),ch=[];r.ondataavailable=e=>ch.push(e.data);const d=new Promise(x=>r.onstop=x);r.start();
  const t0=performance.now(),D=Math.min(30,+cfg.dur||12)*1000;
  await new Promise(res=>(function f(){const p=(performance.now()-t0)/D;draw(cx,cv.width,cv.height,Math.min(p,1));p<1?requestAnimationFrame(f):res()})());
- await new Promise(x=>setTimeout(x,300));r.stop();await d;out(new Blob(ch,{type}),fname(type.includes('mp4')?'mp4':'webm'));msg(type.includes('mp4')?'MP4 saved.':'Saved as WebM (this browser has no MP4 recorder).');render()}
+ await new Promise(x=>setTimeout(x,300));r.stop();await d;
+ if(hasAud){try{src.stop()}catch(e){}try{actx.close()}catch(e){}}
+ out(new Blob(ch,{type}),fname(type.includes('mp4')?'mp4':'webm'));msg(type.includes('mp4')?'MP4 saved.':'Saved as WebM (this browser has no MP4 recorder).');render()}
 const enc=o=>btoa(unescape(encodeURIComponent(JSON.stringify(o))));
 function share(){save();const u=location.href.split('#')[0]+'#'+enc(cfg);navigator.clipboard.writeText(u).then(()=>msg('Share link copied.'),()=>prompt('Copy link:',u))}
 function save(){const t=document.createElement('canvas');t.width=120;t.height=120*cv.height/cv.width;t.getContext('2d').drawImage(cv,0,0,t.width,t.height);
@@ -127,11 +176,10 @@ $('ff').onchange=async e=>{const f=e.target.files[0];if(!f)return;const n=f.name
 (async()=>{
  try{VERS.NIV=window.__NIV__||await (await fetch('data/niv.json')).json()}catch(e){document.body.insertAdjacentHTML('afterbegin','<p style="padding:14px;color:#EACA43">Could not load data/niv.json. Keep index.html together with the data/ and assets/ folders, and open it through GitHub Pages or a local server (not by double-clicking the file).</p>');return}try{Object.assign(VERS,await idbAll())}catch(e){}
  await Promise.all(['gold','white','black'].map(k=>new Promise(r=>{const i=new Image();i.onload=i.onerror=r;i.src=(window.__LOGOS__||{})[k]||`assets/logo-${k}.png`;imgs[k]=i})));
- opts($('ver'),Object.keys(VERS));opts($('size'),Object.keys(SIZES));opts($('fv'),FONTS);opts($('fr'),FONTS);opts($('pos'),POS);
+ opts($('ver'),Object.keys(VERS));opts($('size'),Object.keys(SIZES));opts($('fv'),FONTS);opts($('fr'),FONTS);opts($('pos'),POS);$('anim').innerHTML=Object.entries(ANIMS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
  try{if(location.hash.length>1)cfg={...DEF,...JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(1)))))}}catch(e){}
  if(!VERS[cfg.ver])cfg.ver='NIV';bible=VERS[cfg.ver];if(!bible[cfg.book])cfg.book=Object.keys(bible)[0];opts($('book'),Object.keys(bible));cfg.bgm='gradient';sync();$('book').value=cfg.book;fill();render();hist();
  IDS.forEach(k=>$(k).addEventListener('change',()=>{cfg[k]=$(k).value;if(k=='bgm'&&cfg.bgm=='image'&&!BG)$('bgf').click();if(k=='ver'){bible=VERS[cfg.ver];if(!bible[cfg.book])cfg.book=Object.keys(bible)[0];opts($('book'),Object.keys(bible));$('book').value=cfg.book}if(k=='book'){cfg.ch='1';cfg.v1=cfg.v2='1'}if(k=='ch'){cfg.v1=cfg.v2='1'}if(['ver','book','ch','v1','v2'].includes(k))fill();render()}));
  $('dim').addEventListener('input',()=>{cfg.dim=$('dim').value;render()});
 })();
 </script></body></html>
-
